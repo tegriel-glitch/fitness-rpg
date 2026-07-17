@@ -1,4 +1,5 @@
 // ---------- SUPABASE: клиент и функции работы с players ----------
+import { SAVEABLE_FIELDS } from '../game/saveableFields';
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 
@@ -94,9 +95,18 @@ export async function dbSavePlayer(nickname, snapshot, opts = {}) {
   return false;
 }
 
+// Колонки для вкладки "Гильдия" — генерируются из SAVEABLE_FIELDS (game/saveableFields.js),
+// где guildVisible: true отмечает, какие поля игрока видны остальным.
+// Раньше список был продублирован тут вручную — забытое поле означало,
+// что новая фича молча не появлялась в профилях гильдии.
+const GUILD_SELECT_COLUMNS = [
+  'nickname', 'raids', 'current_level',
+  ...SAVEABLE_FIELDS.filter((f) => f.guildVisible).map((f) => f.column),
+].join(',');
+
 // Fetch all players except the current one (for the Guild tab).
 export async function dbLoadGuildMembers(excludeNickname) {
-  const res = await sbFetch(`players?nickname=neq.${encodeURIComponent(excludeNickname)}&select=nickname,character_name,locked_class_id,chosen_path_id,logs,passive_logs,recovery_logs,consumable_log,raids,active_title,likes,purchased_item_ids,equipped_shop_items,unlocked_skill_levels,books,equipped_avatar_frame,current_level,avatar_emoji,challenge_state,class_choice_mode,combo_class_id,combo_path_id,unlocked_combo_skill_levels,spec_path_id,unlocked_spec_skill_levels,personal_records,bestiary,active_background`);
+  const res = await sbFetch(`players?nickname=neq.${encodeURIComponent(excludeNickname)}&select=${GUILD_SELECT_COLUMNS}`);
   if (!res.ok) {
     // Раньше ошибка тихо проглатывалась (пустой список гильдии без единого следа в консоли).
     // Логируем причину — например, если в таблице ещё нет одной из новых колонок (400 от PostgREST),

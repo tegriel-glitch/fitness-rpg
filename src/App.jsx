@@ -38,6 +38,7 @@ import { MAX_LEVEL, totalXpForLevel, levelFromTotalXp, LEVEL_TITLES, titleEntryF
 import { dateKey, isConsecutiveStreak, computeZeroActivityDays, getWeekKey } from './game/helpers';
 import { getAvatarForTitle, getFrameStyle } from './game/guild';
 import { AVATAR_EMOJIS } from './game/avatarIcons';
+import { SAVEABLE_FIELDS } from './game/saveableFields';
 
 import { styles } from './styles';
 
@@ -369,60 +370,37 @@ function AppInner() {
     };
   });
 
+  // Единая карта сеттеров по ключу поля — используется для генерируемой хидратации
+  // в selectNickname(). Список полей и сеттер для каждого держатся тут же, рядом
+  // со stateRef.current выше — это единственное место, где нужно перечислить сеттеры
+  // руками (React setState-функции нельзя получить по динамическому имени строки).
+  // Сами сеттеры стабильны между рендерами, поэтому пустой массив зависимостей безопасен.
+  const fieldSetters = useMemo(() => ({
+    characterName: setCharacterName, logs: setLogs, passiveLogs: setPassiveLogs, recoveryLogs: setRecoveryLogs, books: setBooks,
+    spentCurrency: setSpentCurrency, purchasedItemIds: setPurchasedItemIds, equippedShopItems: setEquippedShopItems,
+    activeTitle: setActiveTitle, lockedClassId: setLockedClassId, chosenPathId: setChosenPathId, unlockedSkillLevels: setUnlockedSkillLevels,
+    classChoiceMode: setClassChoiceMode, comboClassId: setComboClassId, comboPathId: setComboPathId, unlockedComboSkillLevels: setUnlockedComboSkillLevels,
+    specPathId: setSpecPathId, unlockedSpecSkillLevels: setUnlockedSpecSkillLevels,
+    guildLikes: setGuildLikes, lastLoginDate: setLastLoginDate, loginStreak: setLoginStreak, morningRitualLog: setMorningRitualLog,
+    equippedAvatarFrame: setEquippedAvatarFrame, purchasedFrameIds: setPurchasedFrameIds, avatarEmoji: setAvatarEmoji,
+    challengeState: setChallengeState, roadStoryState: setRoadStoryState, raidShields: setRaidShields, shopShields: setShopShields,
+    lastShopShieldUse: setLastShopShieldUse, lastRaidShieldUse: setLastRaidShieldUse, raidArchive: setRaidArchive, unomieDebuff: setUnomieDebuff,
+    personalRecords: setPersonalRecords, recordsBroken: setRecordsBroken, bestiary: setBestiary, lastBestiaryEventDate: setLastBestiaryEventDate,
+    horseshoeActive: setHorseshoeActive, mapActive: setMapActive, scrollActive: setScrollActive, ownedBackgrounds: setOwnedBackgrounds,
+    activeBackground: setActiveBackground, polishedItemIds: setPolishedItemIds, itemBonusOverrides: setItemBonusOverrides,
+    secondChallengeSlotUnlocked: setSecondChallengeSlotUnlocked, activeChallenge2: setActiveChallenge2, activeShield: setActiveShield,
+    consumableLog: setConsumableLog,
+  }), []);
+
+  // buildSnapshot генерируется из SAVEABLE_FIELDS (game/saveableFields.js) —
+  // раньше это был список из 48 строк вручную, теперь любое новое поле добавляется
+  // только там, и здесь ничего трогать не нужно.
   function buildSnapshot(overrides = {}) {
     const s = stateRef.current;
-    return {
-      character_name: s.characterName,
-      logs: s.logs,
-      passive_logs: s.passiveLogs,
-      recovery_logs: s.recoveryLogs,
-      books: s.books,
-      spent_currency: s.spentCurrency,
-      purchased_item_ids: s.purchasedItemIds,
-      equipped_shop_items: s.equippedShopItems,
-      active_title: s.activeTitle,
-      locked_class_id: s.lockedClassId,
-      chosen_path_id: s.chosenPathId,
-      unlocked_skill_levels: s.unlockedSkillLevels,
-      class_choice_mode: s.classChoiceMode,
-      combo_class_id: s.comboClassId,
-      combo_path_id: s.comboPathId,
-      unlocked_combo_skill_levels: s.unlockedComboSkillLevels,
-      spec_path_id: s.specPathId,
-      unlocked_spec_skill_levels: s.unlockedSpecSkillLevels,
-      likes: s.guildLikes,
-      last_login_date: s.lastLoginDate,
-      login_streak: s.loginStreak,
-      morning_ritual_log: s.morningRitualLog,
-      equipped_avatar_frame: s.equippedAvatarFrame,
-      purchased_frame_ids: s.purchasedFrameIds,
-      avatar_emoji: s.avatarEmoji,
-      challenge_state: s.challengeState,
-      road_story_state: s.roadStoryState,
-      raid_shields: s.raidShields,
-      shop_shields: s.shopShields,
-      last_shop_shield_use: s.lastShopShieldUse,
-      last_raid_shield_use: s.lastRaidShieldUse,
-      raid_archive: s.raidArchive,
-      unomie_debuff: s.unomieDebuff,
-      personal_records: s.personalRecords,
-      records_broken: s.recordsBroken,
-      bestiary: s.bestiary,
-      last_bestiary_event_date: s.lastBestiaryEventDate,
-      horseshoe_active: s.horseshoeActive,
-      map_active: s.mapActive,
-      scroll_active: s.scrollActive,
-      owned_backgrounds: s.ownedBackgrounds,
-      active_background: s.activeBackground,
-      polished_item_ids: s.polishedItemIds,
-      item_bonus_overrides: s.itemBonusOverrides,
-      second_challenge_slot: s.secondChallengeSlotUnlocked,
-      active_challenge2: s.activeChallenge2,
-      active_shield: s.activeShield,
-      consumable_log: s.consumableLog,
-      current_level: levelRef.current || 1,
-      ...overrides,
-    };
+    const snap = {};
+    for (const f of SAVEABLE_FIELDS) snap[f.column] = s[f.key];
+    snap.current_level = levelRef.current || 1;
+    return { ...snap, ...overrides };
   }
 
   // Debounced save — fires 1.5s after the last state change
@@ -508,18 +486,13 @@ function AppInner() {
       }
       if (!row) throw new Error('Не удалось создать профиль');
 
-      // Hydrate state from DB row
-      if (row.logs != null)                  setLogs(row.logs);
-      if (row.passive_logs != null)          setPassiveLogs(row.passive_logs);
-      if (row.recovery_logs != null)         setRecoveryLogs(row.recovery_logs);
-      if (row.books != null)                 setBooks(row.books);
-      if (row.character_name != null)        setCharacterName(row.character_name);
-      if (row.spent_currency != null)        setSpentCurrency(row.spent_currency);
-      if (row.purchased_item_ids != null)    setPurchasedItemIds(row.purchased_item_ids);
-      if (row.equipped_shop_items != null)   setEquippedShopItems(row.equipped_shop_items);
-      if (row.active_title != null)          setActiveTitle(row.active_title);
-      if (row.locked_class_id != null)       setLockedClassId(row.locked_class_id);
-      if (row.chosen_path_id != null)        setChosenPathId(row.chosen_path_id);
+      // Hydrate state from DB row — генерируется из SAVEABLE_FIELDS (game/saveableFields.js).
+      // Раньше это был список из 48 строк вручную; теперь новое поле добавляется
+      // только в SAVEABLE_FIELDS + fieldSetters, и здесь ничего трогать не нужно.
+      for (const f of SAVEABLE_FIELDS) {
+        const v = row[f.column];
+        if (v != null) fieldSetters[f.key](v);
+      }
       // Защита от рассинхрона: если путь выбран (chosen_path_id), а базовый класс
       // не зафиксирован (locked_class_id == null) — класс "потерялся" из-за гонки
       // сохранений (например, несколько вкладок/устройств). Восстанавливаем класс
@@ -534,43 +507,6 @@ function AppInner() {
           setTimeout(() => dbSavePlayer(nick, { locked_class_id: healedClassId }), 500);
         }
       }
-      if (row.unlocked_skill_levels != null) setUnlockedSkillLevels(row.unlocked_skill_levels);
-      if (row.class_choice_mode != null)     setClassChoiceMode(row.class_choice_mode);
-      if (row.combo_class_id != null)        setComboClassId(row.combo_class_id);
-      if (row.combo_path_id != null)         setComboPathId(row.combo_path_id);
-      if (row.unlocked_combo_skill_levels != null) setUnlockedComboSkillLevels(row.unlocked_combo_skill_levels);
-      if (row.spec_path_id != null)          setSpecPathId(row.spec_path_id);
-      if (row.unlocked_spec_skill_levels != null) setUnlockedSpecSkillLevels(row.unlocked_spec_skill_levels);
-      if (row.consumable_log != null)        setConsumableLog(row.consumable_log);
-      if (row.active_shield != null)         setActiveShield(row.active_shield);
-      if (row.likes != null)                 setGuildLikes(row.likes);
-      if (row.last_login_date != null)       setLastLoginDate(row.last_login_date);
-      if (row.login_streak != null)          setLoginStreak(row.login_streak);
-      if (row.morning_ritual_log != null)    setMorningRitualLog(row.morning_ritual_log);
-      if (row.equipped_avatar_frame != null)   setEquippedAvatarFrame(row.equipped_avatar_frame);
-      if (row.purchased_frame_ids != null)       setPurchasedFrameIds(row.purchased_frame_ids);
-      if (row.avatar_emoji != null)              setAvatarEmoji(row.avatar_emoji);
-      if (row.challenge_state != null)            setChallengeState(row.challenge_state);
-      if (row.road_story_state != null)           setRoadStoryState(row.road_story_state);
-      if (row.raid_shields != null)               setRaidShields(row.raid_shields);
-      if (row.shop_shields != null)               setShopShields(row.shop_shields);
-      if (row.last_shop_shield_use != null)       setLastShopShieldUse(row.last_shop_shield_use);
-      if (row.last_raid_shield_use != null)       setLastRaidShieldUse(row.last_raid_shield_use);
-      if (row.raid_archive != null)               setRaidArchive(row.raid_archive);
-      if (row.unomie_debuff != null)              setUnomieDebuff(row.unomie_debuff);
-      if (row.personal_records != null)           setPersonalRecords(row.personal_records);
-      if (row.records_broken != null)             setRecordsBroken(row.records_broken);
-      if (row.bestiary != null)                   setBestiary(row.bestiary);
-      if (row.last_bestiary_event_date != null)   setLastBestiaryEventDate(row.last_bestiary_event_date);
-      if (row.horseshoe_active != null)           setHorseshoeActive(row.horseshoe_active);
-      if (row.map_active != null)                 setMapActive(row.map_active);
-      if (row.scroll_active != null)               setScrollActive(row.scroll_active);
-      if (row.owned_backgrounds != null)           setOwnedBackgrounds(row.owned_backgrounds);
-      if (row.active_background != null)          setActiveBackground(row.active_background);
-      if (row.polished_item_ids != null)           setPolishedItemIds(row.polished_item_ids);
-      if (row.item_bonus_overrides != null)        setItemBonusOverrides(row.item_bonus_overrides);
-      if (row.second_challenge_slot != null)       setSecondChallengeSlotUnlocked(row.second_challenge_slot);
-      if (row.active_challenge2 != null)           setActiveChallenge2(row.active_challenge2);
 
       // If first login (no character_name yet) set it from nick
       if (!row.character_name) setCharacterName(nick);
